@@ -49,7 +49,7 @@ class Translator:
             "temperature": temperature
         }
 
-        try:
+        try:    
             response = requests.post(
                 f"{self.base_url}/chat/completions", 
                 headers=headers, 
