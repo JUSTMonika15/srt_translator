@@ -27,6 +27,13 @@ class ConfigManager:
                     "api_type": "azure",
                     "models": ["gpt-3.5-turbo", "gpt-4"],
                     "api_key": ""  # 新增API Key字段
+                },
+                {
+                    "name": "DeepSeek",
+                    "base_url": "https://api.deepseek.com",
+                    "api_type": "deepseek",
+                    "models": ["deepseek-chat","deepseek-reasoner"],
+                    "api_key": ""
                 }
             ],
             "default_settings": {
