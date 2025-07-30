@@ -320,3 +320,227 @@ class SmartSubtitleTranslator:
         """生成分析报告文件路径"""
         base, ext = os.path.splitext(input_path)
         return f"{base}_analysis.txt"
+
+    #从这里开始是按说话人分组翻译的相关方法
+    
+    #第二阶段变体：按照说话人分组翻译字幕
+    def translate_subtitles_by_speaker(self, subtitles, context_window = 5):
+        """第二阶段-2：按说话人分组翻译字幕"""
+        if not self.context_summary:
+            print("警告：未进行内容分析，将使用默认翻译")
+            self.context_summary = f"这是一个需要翻译的字幕文件。请保持原文的语气和风格。"
+        # 创建已经翻译的文字和组
+        groups = self.group_subtitles_by_speaker(subtitles)
+        translated_texts = []
+        translated_groups = []
+        
+        for i, group in enumerate(groups):
+            #取最近已经翻译过的几组作为上下文
+            # 上文：最近已经翻译的n组，如果没有就是空
+            prev_context = "\n".join(translated_groups[-context_window:]) if translated_groups else ""
+
+            # 下文：当前组的下N组未翻译的原文
+            next_groups = groups[i+1:i+1+context_window]
+            next_context = "\n".join(
+                "\n".join([sub.text for sub in g]) for g in next_groups
+            ) if next_groups else ""
+            
+            group_text = "\n".join([sub.text for sub in group])
+            
+
+            max_retries = 3
+            for retry in range(max_retries):
+                try:
+                    # 构建翻译提示
+                    prompt = f"""
+                    你是一位专业的中英字幕翻译专家，正在翻译一段具有角色发言结构的视频字幕。以下是关于这个视频/内容的背景信息：
+                    {self.context_summary}
+                    
+                    专有词汇列表（请在翻译时特别注意）：
+                    {"\n".join(self.custom_vocab) if self.custom_vocab else "无特殊词汇"}
+                    
+                    翻译要求：
+                    1. 仅翻译【待翻译分组文本】部分
+                    2. 保持原文的语气和风格，调整为更符合中文语境和逻辑的表达。
+                    3. 确保翻译自然流畅，便于视频观众理解，同时保留DND的奇幻氛围。
+                    4. 严格只返回翻译结果，不要添加任何其他内容。
+                    5. 上下文信息仅供参考，请勿翻译上下文内容。
+                    6. 保持与上文衔接，并为下文留出衔接空间。
+                    
+                    已翻译上文（前{context_window}组）：
+                    {prev_context}
+                    
+                    待翻译分组文本：
+                    {group_text}
+                    
+                    未翻译下文（后{context_window}组）：
+                    {next_context}
+                    
+                    请只返回待翻译分组文本的翻译结果。
+                    """
+                    # 尝试翻译
+                    translated_groups = self.translator.translate(
+                        text=group_text,
+                        system_prompt=prompt,
+                        temperature=0.7
+                    )
+                    # 检查翻译结果
+                    if not translated_groups or translated_groups.strip() == '':
+                        raise ValueError("翻译结果为空")
+                    # 移除可能的额外描述
+                    translated_groups = translated_groups.strip()
+                    
+                    # 新加智能拆分环节
+                    eng_lens = [len(sub.text) for sub in group]
+                    total_eng = sum(eng_lens)
+                    zh_total = len(translated_groups)
+                    target_lengths = [max(1, int(zh_total * l / total_eng)) for l in eng_lens]
+                    zh_splits = self.smart_split_translatedSubs(translated_groups, target_lengths)
+                    translated_texts.extend(zh_splits)
+                    translated_groups.append("".join(zh_splits))  # 将分割后的结果添加到已翻译组中
+                    break  # 成功翻译，跳出重试循环
+                except Exception as e:
+                    print(f"翻译分组 {i} 失败（第 {retry + 1} 次尝试）: {e}")
+                    # 最后一次重试仍失败
+                    if retry == max_retries - 1:
+                        # 根据错误类型选择不同的处理方式
+                        if isinstance(e, ValueError):
+                            # 用原文填充每条字幕
+                            for sub in group:
+                                translated_texts.append(f"[翻译失败] {sub.text}")
+                            translated_groups.append("[翻译失败]")
+                        else:
+                            for sub in group:
+                                translated_texts.append(f"[翻译错误：{str(e)}] {sub.text}")
+                            translated_groups.append(f"[翻译错误：{str(e)}]")
+                    
+                    time.sleep(60)
+            
+            # 理论上不会执行到这里，但保险起见
+            return f"[翻译失败] {group_text}"
+        return translated_texts
+                    
+            
+    
+    
+    #根据说话人分类字幕
+    def group_subtitles_by_speaker(self, subtitles):
+        """
+        聚合同一说话人的字幕文本。返回一个列表，每个元素是一个说话人对应的字幕列表。
+        
+        :param subtitles: 对象列表，每个字符串代表一条字幕
+        :return: 返回一个列表，每个元素是一个说话人对应的字幕列表
+        """
+        groups = []
+        current = []
+        currSpeaker = None
+        for sub in subtitles:
+            # 提取说话人名
+            match = re.match(r'^(.+?):', sub.text)
+            speaker = match.group(1) if match else None
+            #如果说话人名变化，变成新的一组
+            if speaker != currSpeaker:
+                if current:
+                    groups.append(current)
+                current = [sub]
+                currSpeaker = speaker
+            #如果说话人名相同，继续添加到当前组
+            else:
+                current.append(sub)
+        #如果最后一组还有内容，添加到结果中
+        if current:
+            groups.append(current)
+        return groups
+        
+        
+    def smart_split_translatedSubs(self, text, target_lengths):
+        """
+        智能分割翻译后的字幕文本，确保每个部分的长度接近目标长度。
+        
+        :param text: 翻译后的字幕文本
+        :param target_lengths: 每个部分的目标长度列表
+        :return: 分割后的字幕文本列表
+        """
+        result = []
+        index = 0
+        for length in target_lengths[:-1]:
+            #在目标长度断句
+            cut = index + length
+            #如果是下一个是标点，则向后切割
+            while cut < len(text) and text[cut] in "。.！？":
+                cut += 1
+            #更新index和result
+            result.append(text[index:cut])
+            index = cut
+        #处理最后一段
+        result.append(text[index:])
+        return result
+    
+    def process_subtitle_file_grouped(self, file_path, target_language) -> Tuple[str, str]:
+       """ 处理字幕文件，按说话人分组翻译，并智能分割翻译后的字幕文本。""" 
+       try:
+           # 读取字幕文件
+            with open(file_path, 'r', encoding = 'utf-8') as f:
+               content = f.read()
+               
+            # 解析字幕
+            subtitles = self.parse_subtitles(content)
+            
+            # 检查是否有可翻译的字幕
+            if not subtitles:
+                raise ValueError(f"文件{file_path}中没有可翻译的字幕")
+            
+            # 提取纯文本用于分析
+            full_text = "\n".join([sub.text for sub in subtitles])
+            
+            # 设置目标语言
+            self.target_language = target_language
+            
+            # 第一阶段：分析内容
+            print("正在分析内容...")
+            context_summary = self.analyze_content(full_text)
+            
+            # 如果内容分析失败，使用默认提示词
+            if not context_summary:
+                context_summary = "这是一个需要翻译的字幕文件。请保持原文的语气和风格。"
+            
+            print(f"内容分析完成：\n{context_summary}\n")
+            
+            # 将上下文摘要保存为实例变量
+            self.context_summary = context_summary
+            
+            # 第二阶段：按说话人分组翻译字幕
+            print("开始按照说话人分组进行翻译...")
+            translated_texts = self.translate_subtitles_by_speaker(subtitles)
+            
+            # 检查翻译结果
+            if len(translated_texts) != len(subtitles):
+                print(f"警告：翻译结果数量({len(translated_texts)})与原字幕数量({len(subtitles)})不符")
+                
+            # 重建字幕文件
+            output_content = self.rebuild_subtitles(subtitles, translated_texts)
+            
+            # 保存翻译结果
+            output_path = self._generate_output_path(file_path, target_language)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(output_content)
+                
+            # 保存分析报告
+            analysis_path = self._generate_analysis_path(file_path)
+            with open(analysis_path, 'w', encoding='utf-8') as f:
+                f.write(f"内容分析报告:\n{context_summary}")
+            
+            # 检查是否有翻译失败的字幕
+            failed_subtitles = [
+                text for text in translated_texts
+                if text.startswith("[翻译失败]") or text.startswith("[翻译错误")
+            ]
+            
+            if failed_subtitles:
+                print(f"警告：{len(failed_subtitles)}个字幕翻译失败")
+            
+            return output_path, analysis_path
+       except Exception as e:
+              print(f"处理字幕文件 {file_path} 时发生错误: {e}")
+              raise
+        
