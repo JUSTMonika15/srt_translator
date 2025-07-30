@@ -379,23 +379,31 @@ class SmartSubtitleTranslator:
                     请只返回待翻译分组文本的翻译结果。
                     """
                     # 尝试翻译
-                    translated_groups = self.translator.translate(
+                    translated_group = self.translator.translate(
                         text=group_text,
                         system_prompt=prompt,
                         temperature=0.7
                     )
                     # 检查翻译结果
-                    if not translated_groups or translated_groups.strip() == '':
+                    if not translated_group or translated_group.strip() == '':
                         raise ValueError("翻译结果为空")
                     # 移除可能的额外描述
-                    translated_groups = translated_groups.strip()
+                    translated_group = translated_group.strip()
                     
                     # 新加智能拆分环节
-                    eng_lens = [len(sub.text) for sub in group]
-                    total_eng = sum(eng_lens)
-                    zh_total = len(translated_groups)
-                    target_lengths = [max(1, int(zh_total * l / total_eng)) for l in eng_lens]
-                    zh_splits = self.smart_split_translatedSubs(translated_groups, target_lengths)
+                    # 先按行分割
+                    lines = [line.strip() for line in translated_group.split('\n') if line.strip()]
+                    if len(lines) == len(group):
+                        zh_splits = lines
+                    else:
+                        # 回退到长度智能拆分
+                        eng_lens = [len(sub.text) for sub in group]
+                        total_eng = sum(eng_lens)
+                        zh_total = len(translated_group)
+                        target_lengths = [max(1, int(zh_total * l / total_eng)) for l in eng_lens]
+                        zh_splits = self.smart_split_translatedSubs(translated_group, target_lengths)
+                        if len(zh_splits) != len(group):
+                            print(f"警告：第{i}组拆分数量不符，原组{len(group)}条，拆分后{len(zh_splits)}条")
                     translated_texts.extend(zh_splits)
                     translated_groups.append("".join(zh_splits))  # 将分割后的结果添加到已翻译组中
                     break  # 成功翻译，跳出重试循环

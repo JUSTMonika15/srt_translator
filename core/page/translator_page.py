@@ -143,6 +143,15 @@ class TranslatorPage(ctk.CTkFrame):
             hover_color="#FF8C00"
         )
         add_vocab_button.pack(side="left", padx=5)
+        
+        ctk.CTkLabel(settings_frame, text="翻译模式:").pack(side="left", padx=5)
+        self.translate_mode = ctk.CTkComboBox(
+            settings_frame,
+            values=["逐条上下文翻译", "按说话人分组"],
+            width=150
+        )
+        self.translate_mode.pack(side="left", padx=5)
+        self.translate_mode.set("按说话人分组")
 
     def create_translate_button(self):
         self.translate_button = ctk.CTkButton(
@@ -370,11 +379,17 @@ class TranslatorPage(ctk.CTkFrame):
                     self.progress.set(index / total_files)
                     self.status_label.configure(text=f"正在处理 {os.path.basename(file_path)}")
 
-                    # 处理字幕
-                    output_path, analysis_path = subtitle_translator.process_subtitle_file(
-                        file_path,
-                        self.target_lang.get()
-                    )
+                    # 处理字幕，根据翻译模式选择方法
+                    if self.translate_mode.get() == "按说话人分组":
+                        output_path, analysis_path = subtitle_translator.process_subtitle_file_grouped(
+                            file_path,
+                            self.target_lang.get()
+                        )
+                    else:
+                        output_path, analysis_path = subtitle_translator.process_subtitle_file(
+                            file_path,
+                            self.target_lang.get()
+                        )
                     
                     # 收集分析报告
                     with open(analysis_path, 'r', encoding='utf-8') as f:
