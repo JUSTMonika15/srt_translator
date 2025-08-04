@@ -425,7 +425,6 @@ class SmartSubtitleTranslator:
                     time.sleep(60)
             
             # 理论上不会执行到这里，但保险起见
-            return f"[翻译失败] {group_text}"
         return translated_texts
                     
             
@@ -434,54 +433,75 @@ class SmartSubtitleTranslator:
     #根据说话人分类字幕
     def group_subtitles_by_speaker(self, subtitles):
         """
-        聚合同一说话人的字幕文本。返回一个列表，每个元素是一个说话人对应的字幕列表。
-        
-        :param subtitles: 对象列表，每个字符串代表一条字幕
-        :return: 返回一个列表，每个元素是一个说话人对应的字幕列表
+        聚合同一说话人的字幕文本。没有说话人名的字幕归入前一个说话人组。
         """
         groups = []
         current = []
         currSpeaker = None
+        # 遍历字幕列表
         for sub in subtitles:
             # 提取说话人名
             match = re.match(r'^(.+?):', sub.text)
             speaker = match.group(1) if match else None
-            #如果说话人名变化，变成新的一组
-            if speaker != currSpeaker:
+            
+            # 如果有新的说话人名，开始新组
+            if speaker is not None and speaker != currSpeaker:
                 if current:
                     groups.append(current)
                 current = [sub]
                 currSpeaker = speaker
-            #如果说话人名相同，继续添加到当前组
             else:
+                # 如果没有说话人名，或者是同一说话人，继续添加到当前组
                 current.append(sub)
-        #如果最后一组还有内容，添加到结果中
+        
+        # 添加最后一组
         if current:
             groups.append(current)
+        
         return groups
         
         
     def smart_split_translatedSubs(self, text, target_lengths):
         """
         智能分割翻译后的字幕文本，确保每个部分的长度接近目标长度。
-        
-        :param text: 翻译后的字幕文本
-        :param target_lengths: 每个部分的目标长度列表
-        :return: 分割后的字幕文本列表
         """
+        if not target_lengths:
+            return [text]
+        
+        if len(target_lengths) == 1:
+            return [text]
+        
         result = []
         index = 0
-        for length in target_lengths[:-1]:
-            #在目标长度断句
-            cut = index + length
-            #如果是下一个是标点，则向后切割
-            while cut < len(text) and text[cut] in "。.！？":
-                cut += 1
-            #更新index和result
+        
+        for i, length in enumerate(target_lengths[:-1]):
+            # 检查是否还有剩余文本
+            if index >= len(text):
+                result.append("")
+                continue
+                
+            # 在目标长度断句
+            cut = min(index + length, len(text))  # ←防止越界
+            
+            # 如果不是最后几个字符，尝试在标点处断开
+            if cut < len(text) - 1:
+                while cut < len(text) and text[cut] in "。,.！？":
+                    cut += 1
+        
+            # 更新index和result
             result.append(text[index:cut])
             index = cut
-        #处理最后一段
-        result.append(text[index:])
+            
+            # 跳过开头的不合适标点和空白字符
+            while index < len(text) and text[index] in "，、 \t\n":
+                index += 1
+    
+        # 处理最后一段
+        if index < len(text):
+            result.append(text[index:])
+        else:
+            result.append("")
+    
         return result
     
     def process_subtitle_file_grouped(self, file_path, target_language) -> Tuple[str, str]:
@@ -551,4 +571,3 @@ class SmartSubtitleTranslator:
        except Exception as e:
               print(f"处理字幕文件 {file_path} 时发生错误: {e}")
               raise
-        
