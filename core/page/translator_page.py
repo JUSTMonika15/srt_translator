@@ -177,6 +177,27 @@ class TranslatorPage(ctk.CTkFrame):
         )
         self.status_label.pack(padx=10, pady=10)
 
+        # 详细信息标签
+        self.detail_label = ctk.CTkLabel(
+            self, 
+            text="", 
+            text_color="blue"
+        )
+        self.detail_label.pack(padx=10, pady=10)
+
+        # 文件级别进度条
+        self.file_progress = ctk.CTkProgressBar(self)
+        self.file_progress.pack(padx=10, pady=10, fill="x")
+        self.file_progress.set(0)
+
+        # 状态信息标签
+        self.stats_label = ctk.CTkLabel(
+            self, 
+            text="", 
+            text_color="purple"
+        )
+        self.stats_label.pack(padx=10, pady=10)
+
     def init_api_settings(self):
         # 设置默认API和API Key
         last_used_api = config_manager.get_last_used_api()
@@ -361,11 +382,12 @@ class TranslatorPage(ctk.CTkFrame):
                 messagebox.showwarning("警告", "并发数和温度必须是数字")
                 return
 
-            # 创建字幕翻译器
+            # 创建字幕翻译器，添加进度回调
             subtitle_translator = SmartSubtitleTranslator(
                 translator=translator, 
                 max_workers=max_workers,
-                custom_vocab=self.custom_vocab  # 传入自定义词汇
+                custom_vocab=self.custom_vocab,
+                progress_callback=self.update_translation_progress  # 只添加这一行
             )
 
             # 准备处理文件
@@ -375,21 +397,14 @@ class TranslatorPage(ctk.CTkFrame):
             # 遍历文件并翻译
             for index, file_path in enumerate(self.file_paths, 1):
                 try:
-                    # 更新进度
-                    self.progress.set(index / total_files)
-                    self.status_label.configure(text=f"正在处理 {os.path.basename(file_path)}")
-
-                    # 处理字幕，根据翻译模式选择方法
-                    if self.translate_mode.get() == "按说话人分组":
-                        output_path, analysis_path = subtitle_translator.process_subtitle_file_grouped(
-                            file_path,
-                            self.target_lang.get()
-                        )
-                    else:
-                        output_path, analysis_path = subtitle_translator.process_subtitle_file(
-                            file_path,
-                            self.target_lang.get()
-                        )
+                    # 更新文件级别进度
+                    self.update_file_progress(index, total_files, file_path)
+                    
+                    # 处理字幕
+                    output_path, analysis_path = subtitle_translator.process_subtitle_file_grouped(
+                        file_path,
+                        self.target_lang.get()
+                    )
                     
                     # 收集分析报告
                     with open(analysis_path, 'r', encoding='utf-8') as f:
@@ -400,12 +415,13 @@ class TranslatorPage(ctk.CTkFrame):
 
                 except Exception as e:
                     print(f"处理 {file_path} 时出错: {e}")
-                    traceback.print_exc()
+                    self.update_status(f"处理 {os.path.basename(file_path)} 时出错", "red")
                     messagebox.showwarning("警告", f"处理 {os.path.basename(file_path)} 时出错: {e}")
 
             # 完成处理
             self.progress.set(1)
             self.status_label.configure(text="翻译完成", text_color="green")
+            self.detail_label.configure(text="所有文件处理完成")
             
             # 显示分析报告
             self.show_analysis_reports(analysis_reports)
@@ -415,6 +431,83 @@ class TranslatorPage(ctk.CTkFrame):
             self.status_label.configure(text="翻译失败", text_color="red")
             messagebox.showerror("错误", str(e))
             traceback.print_exc()
+
+    def update_file_progress(self, current_file, total_files, file_path):
+        """更新文件级别进度"""
+        try:
+            # 更新总体进度
+            overall_progress = (current_file - 1) / total_files
+            self.progress.set(overall_progress)
+            
+            # 更新状态信息
+            self.status_label.configure(
+                text=f"处理文件 {current_file}/{total_files}: {os.path.basename(file_path)}", 
+                text_color="blue"
+            )
+            
+            # 重置文件级进度条
+            self.file_progress.set(0)
+            
+            # 更新详细信息
+            self.detail_label.configure(text=f"正在处理: {os.path.basename(file_path)}")
+            
+            # 强制更新UI
+            self.update()
+            
+        except Exception as e:
+            print(f"更新文件进度失败: {e}")
+
+    def update_status(self, message, color="black"):
+        """更新状态信息"""
+        try:
+            self.status_label.configure(text=message, text_color=color)
+            self.update()
+        except Exception as e:
+            print(f"更新状态失败: {e}")
+
+    def update_translation_progress(self, stage, current, total, extra_info=""):
+        """翻译进度回调方法"""
+        try:
+            if stage == "reading_file":
+                self.detail_label.configure(text="正在读取文件...")
+                self.stats_label.configure(text="")
+            elif stage == "parsing_subtitles":
+                self.detail_label.configure(text="正在解析字幕格式...")
+            elif stage == "content_analysis":
+                self.detail_label.configure(text="正在分析内容...")
+                self.stats_label.configure(text="")
+            elif stage == "translation_start":
+                self.detail_label.configure(text=f"开始翻译，共{total}条字幕")
+                self.stats_label.configure(text="")
+            elif stage == "translating":
+                if total > 0:
+                    progress = current / total
+                    self.file_progress.set(progress)
+                    self.detail_label.configure(text=f"正在翻译... {current}/{total}")
+                    self.stats_label.configure(text=extra_info)
+            elif stage == "retry":
+                self.detail_label.configure(text=f"重试中... {current}/{total}")
+                self.stats_label.configure(text=extra_info)
+            elif stage == "failed":
+                self.detail_label.configure(text=f"翻译失败... {current}/{total}")
+                self.stats_label.configure(text=extra_info)
+            elif stage == "rebuilding":
+                self.detail_label.configure(text="正在重建SRT文件...")
+                self.stats_label.configure(text="")
+                self.file_progress.set(1.0)
+            elif stage == "completed":
+                self.detail_label.configure(text="文件处理完成")
+                self.stats_label.configure(text=extra_info)
+                self.file_progress.set(1.0)
+            elif stage == "error":
+                self.detail_label.configure(text="处理出错")
+                self.stats_label.configure(text=extra_info)
+
+            # 强制更新UI
+            self.update()
+
+        except Exception as e:
+            print(f"进度回调出错: {e}")
 
     def show_analysis_reports(self, reports):
         """显示多个文件的分析报告"""

@@ -3,7 +3,7 @@ import re
 import time
 import random
 import traceback
-import concurrent.futures
+import concurrent.futures  # 添加这个导入
 from typing import List, Tuple, Optional
 
 import tiktoken
@@ -17,16 +17,25 @@ class Subtitle:
 
 class SmartSubtitleTranslator:
     def __init__(self, translator, max_workers=5, max_tokens=2000, 
-                 max_retries=3, retry_delay_base=30, custom_vocab=None):
+                 max_retries=3, retry_delay_base=30, custom_vocab=None, progress_callback=None):
         self.translator = translator
         self.max_workers = max_workers
         self.max_tokens = max_tokens
-        self.max_retries = max_retries  # 最大重试次数
-        self.retry_delay_base = retry_delay_base  # 基础重试延迟
+        self.max_retries = max_retries
+        self.retry_delay_base = retry_delay_base
         self.context_summary = None
         self.target_language = None
         self.source_language = None
-        self.custom_vocab = custom_vocab or []  # 新增自定义词汇属性
+        self.custom_vocab = custom_vocab or []
+        self.progress_callback = progress_callback  # 只添加这一行
+        
+    def _update_progress(self, stage, current=0, total=0, extra_info=""):
+        """内部进度更新方法"""
+        if self.progress_callback:
+            try:
+                self.progress_callback(stage, current, total, extra_info)
+            except Exception as e:
+                print(f"进度回调出错: {e}")
 
     def count_tokens(self, text):
         try:
@@ -103,15 +112,32 @@ class SmartSubtitleTranslator:
             return None
 
 
+    def translate_with_timeout(self, text, system_prompt, temperature=0.7, timeout_seconds=60):
+        """带超时的翻译方法"""
+        def translate_task():
+            return self.translator.translate(
+                text=text,
+                system_prompt=system_prompt,
+                temperature=temperature
+            )
+        
+        # 使用线程池执行翻译，带超时
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(translate_task)
+            try:
+                return future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                raise Exception(f"翻译超时 ({timeout_seconds}秒)")
+    
     def translate_with_context(self, subtitles):
         """第二阶段：基于上下文进行批量翻译"""
         if not self.context_summary:
             print("警告：未进行内容分析，将使用默认翻译")
             self.context_summary = f"这是一个需要翻译的字幕文件。请保持原文的语气和风格。"
-    
+
         # 创建一个用于存储已翻译结果的共享列表
         translated_texts = [None] * len(subtitles)
-    
+
         def safe_translate_subtitle(subtitle, context_summary, subtitles, translated_texts):
             """
             安全的字幕翻译方法，支持部分并发翻译
@@ -137,17 +163,21 @@ class SmartSubtitleTranslator:
             next_text = "\n".join([s.text for s in next_context])
             
             max_retries = 3
+            timeout_seconds = 60  # 1分钟超时
+            
             for retry in range(max_retries):
                 try:
+                    print(f"正在翻译字幕 {subtitle.index}，尝试 {retry+1}/{max_retries}")
+                    
                     # 构建翻译提示
                     translation_prompt = f"""
-                    你是一位专业的中英字幕翻译专家，正在翻译一段具有角色发言结构的视频字幕。以下是关于这个视频/内容的背景信息：
-    
+                    你是一个专业的字幕翻译专家。以下是关于这个视频/内容的背景信息：
+
                     {context_summary}
 
                     专用词汇列表（请在翻译时特别注意）：
                     {"\n".join(self.custom_vocab) if self.custom_vocab else "无特殊词汇"}
-    
+
                     翻译要求：
                     1. 仅翻译"待翻译文本"部分
                     2. 保持原文的语气和风格，调整为更符合中文语境和逻辑的表达。整体语言风格应略带轻松但专业，以适应DND视频观众的预期。
@@ -155,28 +185,43 @@ class SmartSubtitleTranslator:
                     4. 严格只返回翻译结果，不要添加任何其他内容
                     5. 我会为你在待翻译文本前后提供它的上下文，请你不要翻译它们。
                     6. 当前句子翻译需参考上下文，但不得提前翻译后续句子的具体内容。
-                    7. 翻译需为后续内容留出逻辑衔接空间，避免突兀地断句, 应该能与已经翻译的前文，以及未翻译的后文能连上，而不是出现重复。
-                    8. 保持上下文的连贯性和整体语气一致，句间语义需自然衔接。
-                    9. 以每次出现的‘说话人名+冒号’为段落起始标记，从该标记开始，直到下一个说话人标记出现为止，视为一个完整发言段落。每个发言段落需整体翻译，不得拆分或打断。段落起始的人名必须翻译。
-                    10. 有关法术，物品的专有名词，使用「」标注
-                    11. 如果本句话是段落初始，应考虑给下一句断句，留下可以接上的部分。如果这一句是接上的句子，并且上一句已经翻译了本句的某些英文句子，那么本句不再重复翻译。
-    
+                    7. 翻译需为后续内容留出逻辑衔接空间，避免突兀地断句。
+                    8. 当句子逻辑复杂时，可根据中文习惯断句，并将部分内容转移到下一句。例子：
+                    示例：
+                    英文原文：
+                    第一句：
+                    MARISHA: I mean, we could Stone Shape it and I could like Stone Shape it and bury it somewhere in 
+                    第二句：
+                    our Keep.
+
+                    理想翻译：
+                    第一句：
+                    玛丽莎：我的意思是，我们可以用「塑石术」把它变成石头，然后——
+                    第二句：
+                    埋在我们的「灰颅堡」某个地方。
+
+                    9. 保持上下文的连贯性和整体语气一致，句间语义需自然衔接。
+                    10. 禁止重复翻译上下文内容，仅使用当前句的信息完成翻译。
+                    11. 程序会默认第一行为翻译结果，并自动截取第一行
+                    12. 有关法术的专有名词，使用「」标注
+
                     已翻译上文（前10句）：
                     {"\n".join(prev_context)}
-    
+
                     待翻译文本：{subtitle.text}
-    
+
                     未翻译下文（后10句）：
                     {next_text}
-    
+
                     请只返回待翻译文本的翻译结果。
                     """
                     
-                    # 尝试翻译
-                    translated_text = self.translator.translate(
+                    # 使用带超时的翻译方法 - 这里是关键修改
+                    translated_text = self.translate_with_timeout(
                         text=subtitle.text,
                         system_prompt=translation_prompt,
-                        temperature=0.7
+                        temperature=0.7,
+                        timeout_seconds=timeout_seconds
                     )
                     
                     # 检查翻译结果
@@ -190,23 +235,32 @@ class SmartSubtitleTranslator:
                 
                 except Exception as e:
                     # 记录错误
-                    print(f"翻译字幕 {subtitle.index} 失败（第 {retry + 1} 次尝试）: {e}")
+                    if "翻译超时" in str(e):
+                        print(f"翻译字幕 {subtitle.index} 超时（第 {retry + 1} 次尝试）: {e}")
+                    else:
+                        print(f"翻译字幕 {subtitle.index} 失败（第 {retry + 1} 次尝试）: {e}")
                     
                     # 最后一次重试仍失败
                     if retry == max_retries - 1:
                         # 根据错误类型选择不同的处理方式
-                        if isinstance(e, ValueError):
+                        if "翻译超时" in str(e):
+                            return f"[超时跳过] {subtitle.text}"
+                        elif isinstance(e, ValueError):
                             # 如果是值错误（如空结果），返回原文并附加错误标记
                             return f"[翻译失败] {subtitle.text}"
                         else:
                             # 对于其他类型错误，返回原文并附加详细错误信息
                             return f"[翻译错误：{str(e)}] {subtitle.text}"
                     
-                    time.sleep(60)
+                    # 等待后重试
+                    if "翻译超时" in str(e):
+                        time.sleep(10)  # 超时后等待10秒
+                    else:
+                        time.sleep(60)  # 其他错误等待60秒
             
             # 理论上不会执行到这里，但保险起见
             return f"[翻译失败] {subtitle.text}"
-    
+
         # 使用线程池进行并发翻译
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # 准备翻译任务
@@ -335,6 +389,10 @@ class SmartSubtitleTranslator:
         translated_groups = []
         
         for i, group in enumerate(groups):
+            # 更新进度显示
+            self._update_progress("translating", i, len(groups), f"翻译第{i+1}组，共{len(groups)}组")
+            print(f"正在翻译第{i+1}组，共{len(groups)}组")
+            
             #取最近已经翻译过的几组作为上下文
             # 上文：最近已经翻译的n组，如果没有就是空
             prev_context = "\n".join(translated_groups[-context_window:]) if translated_groups else ""
@@ -351,6 +409,10 @@ class SmartSubtitleTranslator:
             max_retries = 3
             for retry in range(max_retries):
                 try:
+                    # 更新重试进度
+                    if retry > 0:
+                        self._update_progress("retry", i, len(groups), f"第{i+1}组重试第{retry+1}次")
+                        
                     # 构建翻译提示
                     prompt = f"""
                     你是一位专业的中英字幕翻译专家，正在翻译一段具有角色发言结构的视频字幕。以下是关于这个视频/内容的背景信息：
@@ -406,11 +468,16 @@ class SmartSubtitleTranslator:
                             print(f"警告：第{i}组拆分数量不符，原组{len(group)}条，拆分后{len(zh_splits)}条")
                     translated_texts.extend(zh_splits)
                     translated_groups.append("".join(zh_splits))  # 将分割后的结果添加到已翻译组中
+                    
+                    # 翻译成功进度更新
+                    self._update_progress("translating", i+1, len(groups), f"完成第{i+1}组翻译")
                     break  # 成功翻译，跳出重试循环
                 except Exception as e:
                     print(f"翻译分组 {i} 失败（第 {retry + 1} 次尝试）: {e}")
                     # 最后一次重试仍失败
                     if retry == max_retries - 1:
+                        # 更新失败进度
+                        self._update_progress("failed", i+1, len(groups), f"第{i+1}组翻译失败")
                         # 根据错误类型选择不同的处理方式
                         if isinstance(e, ValueError):
                             # 用原文填充每条字幕
@@ -426,10 +493,7 @@ class SmartSubtitleTranslator:
             
             # 理论上不会执行到这里，但保险起见
         return translated_texts
-                    
-            
-    
-    
+
     #根据说话人分类字幕
     def group_subtitles_by_speaker(self, subtitles):
         """
@@ -485,7 +549,7 @@ class SmartSubtitleTranslator:
             
             # 如果不是最后几个字符，尝试在标点处断开
             if cut < len(text) - 1:
-                while cut < len(text) and text[cut] in "。,.！？":
+                while cut < len(text) and text[cut] in "。，.！？的们":
                     cut += 1
         
             # 更新index和result
@@ -508,10 +572,12 @@ class SmartSubtitleTranslator:
        """ 处理字幕文件，按说话人分组翻译，并智能分割翻译后的字幕文本。""" 
        try:
            # 读取字幕文件
+            self._update_progress("reading_file", extra_info=f"读取文件: {os.path.basename(file_path)}")
             with open(file_path, 'r', encoding = 'utf-8') as f:
                content = f.read()
                
             # 解析字幕
+            self._update_progress("parsing_subtitles", extra_info="解析字幕格式")
             subtitles = self.parse_subtitles(content)
             
             # 检查是否有可翻译的字幕
@@ -525,6 +591,7 @@ class SmartSubtitleTranslator:
             self.target_language = target_language
             
             # 第一阶段：分析内容
+            self._update_progress("content_analysis", extra_info="分析内容和上下文")
             print("正在分析内容...")
             context_summary = self.analyze_content(full_text)
             
@@ -538,6 +605,7 @@ class SmartSubtitleTranslator:
             self.context_summary = context_summary
             
             # 第二阶段：按说话人分组翻译字幕
+            self._update_progress("translation_start", 0, len(subtitles), "开始按说话人分组翻译")
             print("开始按照说话人分组进行翻译...")
             translated_texts = self.translate_subtitles_by_speaker(subtitles)
             
@@ -546,6 +614,7 @@ class SmartSubtitleTranslator:
                 print(f"警告：翻译结果数量({len(translated_texts)})与原字幕数量({len(subtitles)})不符")
                 
             # 重建字幕文件
+            self._update_progress("rebuilding", extra_info="重建SRT文件")
             output_content = self.rebuild_subtitles(subtitles, translated_texts)
             
             # 保存翻译结果
@@ -567,7 +636,127 @@ class SmartSubtitleTranslator:
             if failed_subtitles:
                 print(f"警告：{len(failed_subtitles)}个字幕翻译失败")
             
+            self._update_progress("completed", len(subtitles), len(subtitles), f"翻译完成: {os.path.basename(output_path)}")
             return output_path, analysis_path
        except Exception as e:
-              print(f"处理字幕文件 {file_path} 时发生错误: {e}")
-              raise
+           self._update_progress("error", extra_info=f"处理文件失败: {str(e)}")
+           print(f"处理字幕文件 {file_path} 时发生错误: {e}")
+           raise
+
+    def translate_subtitles_by_speaker(self, subtitles, context_window = 5):
+        """第二阶段-2：按说话人分组翻译字幕，添加进度显示"""
+        if not self.context_summary:
+            print("警告：未进行内容分析，将使用默认翻译")
+            self.context_summary = f"这是一个需要翻译的字幕文件。请保持原文的语气和风格。"
+        # 创建已经翻译的文字和组
+        groups = self.group_subtitles_by_speaker(subtitles)
+        translated_texts = []
+        translated_groups = []
+        
+        for i, group in enumerate(groups):
+            # 更新进度显示
+            self._update_progress("translating", i, len(groups), f"翻译第{i+1}组，共{len(groups)}组")
+            print(f"正在翻译第{i+1}组，共{len(groups)}组")
+            
+            #取最近已经翻译过的几组作为上下文
+            # 上文：最近已经翻译的n组，如果没有就是空
+            prev_context = "\n".join(translated_groups[-context_window:]) if translated_groups else ""
+
+            # 下文：当前组的下N组未翻译的原文
+            next_groups = groups[i+1:i+1+context_window]
+            next_context = "\n".join(
+                "\n".join([sub.text for sub in g]) for g in next_groups
+            ) if next_groups else ""
+            
+            group_text = "\n".join([sub.text for sub in group])
+            
+
+            max_retries = 3
+            for retry in range(max_retries):
+                try:
+                    # 更新重试进度
+                    if retry > 0:
+                        self._update_progress("retry", i, len(groups), f"第{i+1}组重试第{retry+1}次")
+                        
+                    # 构建翻译提示
+                    prompt = f"""
+                    你是一位专业的中英字幕翻译专家，正在翻译一段具有角色发言结构的视频字幕。以下是关于这个视频/内容的背景信息：
+                    {self.context_summary}
+                    
+                    专有词汇列表（请在翻译时特别注意）：
+                    {"\n".join(self.custom_vocab) if self.custom_vocab else "无特殊词汇"}
+                    
+                    翻译要求：
+                    1. 仅翻译【待翻译分组文本】部分
+                    2. 保持原文的语气和风格，调整为更符合中文语境和逻辑的表达。
+                    3. 确保翻译自然流畅，便于视频观众理解，同时保留DND的奇幻氛围。
+                    4. 严格只返回翻译结果，不要添加任何其他内容。
+                    5. 上下文信息仅供参考，请勿翻译上下文内容。
+                    6. 保持与上文衔接，并为下文留出衔接空间。
+                    
+                    已翻译上文（前{context_window}组）：
+                    {prev_context}
+                    
+                    待翻译分组文本：
+                    {group_text}
+                    
+                    未翻译下文（后{context_window}组）：
+                    {next_context}
+                    
+                    请只返回待翻译分组文本的翻译结果。
+                    """
+                    # 尝试翻译
+                    translated_group = self.translator.translate(
+                        text=group_text,
+                        system_prompt=prompt,
+                        temperature=0.7
+                    )
+                    # 检查翻译结果
+                    if not translated_group or translated_group.strip() == '':
+                        raise ValueError("翻译结果为空")
+                    # 移除可能的额外描述
+                    translated_group = translated_group.strip()
+                    
+                    # 新加智能拆分环节
+                    # 先按行分割
+                    lines = [line.strip() for line in translated_group.split('\n') if line.strip()]
+                    if len(lines) == len(group):
+                        zh_splits = lines
+                    else:
+                        # 回退到长度智能拆分
+                        eng_lens = [len(sub.text) for sub in group]
+                        total_eng = sum(eng_lens)
+                        zh_total = len(translated_group)
+                        target_lengths = [max(1, int(zh_total * l / total_eng)) for l in eng_lens]
+                        zh_splits = self.smart_split_translatedSubs(translated_group, target_lengths)
+                        if len(zh_splits) != len(group):
+                            print(f"警告：第{i}组拆分数量不符，原组{len(group)}条，拆分后{len(zh_splits)}条")
+                    translated_texts.extend(zh_splits)
+                    translated_groups.append("".join(zh_splits))  # 将分割后的结果添加到已翻译组中
+                    
+                    # 翻译成功进度更新
+                    self._update_progress("translating", i+1, len(groups), f"完成第{i+1}组翻译")
+                    break  # 成功翻译，跳出重试循环
+                except Exception as e:
+                    print(f"翻译分组 {i} 失败（第 {retry + 1} 次尝试）: {e}")
+                    # 最后一次重试仍失败
+                    if retry == max_retries - 1:
+                        # 更新失败进度
+                        self._update_progress("failed", i+1, len(groups), f"第{i+1}组翻译失败")
+                        # 根据错误类型选择不同的处理方式
+                        if isinstance(e, ValueError):
+                            # 用原文填充每条字幕
+                            for sub in group:
+                                translated_texts.append(f"[翻译失败] {sub.text}")
+                            translated_groups.append("[翻译失败]")
+                        else:
+                            for sub in group:
+                                translated_texts.append(f"[翻译错误：{str(e)}] {sub.text}")
+                            translated_groups.append(f"[翻译错误：{str(e)}]")
+                    
+                    time.sleep(60)
+            
+            # 理论上不会执行到这里，但保险起见
+        return translated_texts
+
+    # ...existing code... (其他所有方法保持完全不变)
