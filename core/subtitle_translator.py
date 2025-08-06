@@ -429,6 +429,7 @@ class SmartSubtitleTranslator:
                     4. 严格只返回翻译结果，不要添加任何其他内容。
                     5. 上下文信息仅供参考，请勿翻译上下文内容。
                     6. 保持与上文衔接，并为下文留出衔接空间。
+                    7. 如果有单独的数字，一般代表着掷骰的点数，不是多少分。
                     
                     已翻译上文（前{context_window}组）：
                     {prev_context}
@@ -490,7 +491,7 @@ class SmartSubtitleTranslator:
                                 translated_texts.append(f"[翻译错误：{str(e)}] {sub.text}")
                             translated_groups.append(f"[翻译错误：{str(e)}]")
                     
-                    time.sleep(60)
+                    time.sleep(10)
             
             # 理论上不会执行到这里，但保险起见
         return translated_texts
@@ -550,7 +551,7 @@ class SmartSubtitleTranslator:
             
             # 如果不是最后几个字符，尝试在标点处断开
             if cut < len(text) - 1:
-                while cut < len(text) and text[cut] in "。，.！？的们":
+                while cut < len(text) and text[cut] in "。，.！？的们么了地些":
                     cut += 1
         
             # 更新index和result
