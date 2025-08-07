@@ -198,6 +198,11 @@ class TranslatorPage(ctk.CTkFrame):
         )
         self.stats_label.pack(padx=10, pady=10)
 
+        self.group_progress_labels = []
+        self.group_progress_frame = ctk.CTkFrame(self)
+        self.group_progress_frame.pack(padx=10, pady=5, fill="x")
+        # 初始化时不创建分组标签，翻译开始时动态生成
+
     def init_api_settings(self):
         # 设置默认API和API Key
         last_used_api = config_manager.get_last_used_api()
@@ -397,7 +402,7 @@ class TranslatorPage(ctk.CTkFrame):
             # 遍历文件并翻译
             for index, file_path in enumerate(self.file_paths, 1):
                 try:
-                    # 更新文件级别进度
+                    # 更新文件级进度
                     self.update_file_progress(index, total_files, file_path)
                     
                     # 处理字幕
@@ -466,48 +471,74 @@ class TranslatorPage(ctk.CTkFrame):
             print(f"更新状态失败: {e}")
 
     def update_translation_progress(self, stage, current, total, extra_info=""):
-        """翻译进度回调方法"""
-        try:
-            if stage == "reading_file":
-                self.detail_label.configure(text="正在读取文件...")
-                self.stats_label.configure(text="")
-            elif stage == "parsing_subtitles":
-                self.detail_label.configure(text="正在解析字幕格式...")
-            elif stage == "content_analysis":
-                self.detail_label.configure(text="正在分析内容...")
-                self.stats_label.configure(text="")
-            elif stage == "translation_start":
-                self.detail_label.configure(text=f"开始翻译，共{total}条字幕")
-                self.stats_label.configure(text="")
-            elif stage == "translating":
-                if total > 0:
-                    progress = current / total
-                    self.file_progress.set(progress)
-                    self.detail_label.configure(text=f"正在翻译... {current}/{total}")
+        def _update():
+            if stage.startswith("group_"):
+                # 动态创建分组标签（只在第一次调用时）
+                if not self.group_progress_labels or len(self.group_progress_labels) != total:
+                    # 清空旧标签
+                    for lbl in self.group_progress_labels:
+                        try:
+                            if lbl.winfo_exists():
+                                lbl.destroy()
+                        except Exception as e:
+                            print(f"分组标签销毁异常: {e}")
+                    self.group_progress_labels = []
+                    for i in range(total):
+                        lbl = ctk.CTkLabel(self.group_progress_frame, text=f"第{i+1}组：等待中", text_color="gray")
+                        lbl.pack(anchor="w")
+                        self.group_progress_labels.append(lbl)
+                # 更新当前分组标签
+                idx = current - 1
+                if 0 <= idx < len(self.group_progress_labels):
+                    color = "blue"
+                    if "done" in stage:
+                        color = "green"
+                    elif "error" in stage:
+                        color = "red"
+                    elif "retry" in stage:
+                        color = "orange"
+                    self.group_progress_labels[idx].configure(text=extra_info, text_color=color)
+                self.update()
+            else:
+                if stage == "reading_file":
+                    self.detail_label.configure(text="正在读取文件...")
+                    self.stats_label.configure(text="")
+                elif stage == "parsing_subtitles":
+                    self.detail_label.configure(text="正在解析字幕格式...")
+                elif stage == "content_analysis":
+                    self.detail_label.configure(text="正在分析内容...")
+                    self.stats_label.configure(text="")
+                elif stage == "translation_start":
+                    self.detail_label.configure(text=f"开始翻译，共{total}条字幕")
+                    self.stats_label.configure(text="")
+                elif stage == "translating":
+                    if total > 0:
+                        progress = current / total
+                        self.file_progress.set(progress)
+                        self.detail_label.configure(text=f"正在翻译... {current}/{total}")
+                        self.stats_label.configure(text=extra_info)
+                elif stage == "retry":
+                    self.detail_label.configure(text=f"重试中... {current}/{total}")
                     self.stats_label.configure(text=extra_info)
-            elif stage == "retry":
-                self.detail_label.configure(text=f"重试中... {current}/{total}")
-                self.stats_label.configure(text=extra_info)
-            elif stage == "failed":
-                self.detail_label.configure(text=f"翻译失败... {current}/{total}")
-                self.stats_label.configure(text=extra_info)
-            elif stage == "rebuilding":
-                self.detail_label.configure(text="正在重建SRT文件...")
-                self.stats_label.configure(text="")
-                self.file_progress.set(1.0)
-            elif stage == "completed":
-                self.detail_label.configure(text="文件处理完成")
-                self.stats_label.configure(text=extra_info)
-                self.file_progress.set(1.0)
-            elif stage == "error":
-                self.detail_label.configure(text="处理出错")
-                self.stats_label.configure(text=extra_info)
+                elif stage == "failed":
+                    self.detail_label.configure(text=f"翻译失败... {current}/{total}")
+                    self.stats_label.configure(text=extra_info)
+                elif stage == "rebuilding":
+                    self.detail_label.configure(text="正在重建SRT文件...")
+                    self.stats_label.configure(text="")
+                    self.file_progress.set(1.0)
+                elif stage == "completed":
+                    self.detail_label.configure(text="文件处理完成")
+                    self.stats_label.configure(text=extra_info)
+                    self.file_progress.set(1.0)
+                elif stage == "error":
+                    self.detail_label.configure(text="处理出错")
+                    self.stats_label.configure(text=extra_info)
 
-            # 强制更新UI
-            self.update()
+                # 强制更新UI
+                self.update()
 
-        except Exception as e:
-            print(f"进度回调出错: {e}")
+        self.after(0, _update)
 
     def show_analysis_reports(self, reports):
         """显示多个文件的分析报告"""
@@ -534,3 +565,12 @@ class TranslatorPage(ctk.CTkFrame):
             command=dialog.destroy
         )
         close_button.pack(pady=10)
+
+    def clear_group_progress(self):
+        for lbl in self.group_progress_labels:
+            try:
+                if lbl.winfo_exists():
+                    lbl.destroy()
+            except Exception as e:
+                print(f"分组标签销毁异常: {e}")
+        self.group_progress_labels = []
