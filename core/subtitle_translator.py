@@ -17,7 +17,7 @@ class Subtitle:
 
 class SmartSubtitleTranslator:
     def __init__(self, translator, max_workers=5, max_tokens=2000, 
-                 max_retries=3, retry_delay_base=30, custom_vocab=None, progress_callback=None):
+                 max_retries=3, retry_delay_base=30, custom_vocab=None, progress_callback=None, temperature=0.7):
         self.translator = translator
         self.max_workers = max_workers
         self.max_tokens = max_tokens
@@ -28,7 +28,8 @@ class SmartSubtitleTranslator:
         self.source_language = None
         self.custom_vocab = custom_vocab or []
         self.progress_callback = progress_callback  # 只添加这一行
-        
+        self.temperature = temperature
+
     def _update_progress(self, stage, current=0, total=0, extra_info=""):
         """内部进度更新方法"""
         if self.progress_callback:
@@ -98,7 +99,7 @@ class SmartSubtitleTranslator:
             context_summary = self.translator.translate(
                 text=full_text[:2500],  # 只分析前2500字
                 system_prompt=analysis_prompt,
-                temperature=0.3
+                temperature=1 #TODO 如果不用gpt-5的话可以调整回来，gpt-5只能使用1的温度
             )
             
             # 检查返回内容是否为空
@@ -415,6 +416,8 @@ class SmartSubtitleTranslator:
                     5. 上下文信息仅供参考，请勿翻译上下文内容。
                     6. 保持与上文衔接，并为下文留出衔接空间。
                     7. 如果有单独的数字，一般代表着掷骰的点数，不是多少分。
+                    8. 请注意相似的人名翻译，例如惠顿 WIL 威尔 WILL，要有区分，名字请一定要翻译
+
                     
                     已翻译上文（前{context_window}组）：
                     {prev_context}
@@ -430,7 +433,7 @@ class SmartSubtitleTranslator:
                     translated_group = self.translator.translate(
                         text=group_text,
                         system_prompt=prompt,
-                        temperature=0.7
+                        temperature=self.temperature
                     )
                     if not translated_group or translated_group.strip() == '':
                         raise ValueError("翻译结果为空")

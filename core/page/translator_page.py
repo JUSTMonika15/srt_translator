@@ -392,7 +392,8 @@ class TranslatorPage(ctk.CTkFrame):
                 translator=translator, 
                 max_workers=max_workers,
                 custom_vocab=self.custom_vocab,
-                progress_callback=self.update_translation_progress  # 只添加这一行
+                progress_callback=self.update_translation_progress,  # 只添加这一行
+                temperature=temperature  # 新增
             )
 
             # 准备处理文件
