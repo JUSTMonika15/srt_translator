@@ -99,7 +99,7 @@ class SmartSubtitleTranslator:
             context_summary = self.translator.translate(
                 text=full_text[:2500],  # 只分析前2500字
                 system_prompt=analysis_prompt,
-                temperature=1 #TODO 如果不用gpt-5的话可以调整回来，gpt-5只能使用1的温度
+                temperature=0.3 
             )
             
             # 检查返回内容是否为空
@@ -512,7 +512,7 @@ class SmartSubtitleTranslator:
             speaker = match.group(1) if match else None
             
             # 如果有新的说话人名，开始新组
-            if speaker is not None and speaker != currSpeaker:
+            if speaker is not None:
                 if current:
                     groups.append(current)
                 current = [sub]
@@ -552,7 +552,7 @@ class SmartSubtitleTranslator:
             
             # 如果不是最后几个字符，尝试在标点处断开
             if cut < len(text) - 1:
-                while cut < len(text) and text[cut] in "。，.！？的们么了地些":
+                while cut < len(text) and text[cut] in "。，.！？的们么了地些”":
                     cut += 1
         
             # 更新index和result

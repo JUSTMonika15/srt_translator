@@ -18,7 +18,7 @@ class ConfigManager:
                     "name": "OpenAI",
                     "base_url": "https://api.openai.com/v1",
                     "api_type": "openai",
-                    "models": ["gpt-5", "gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4.1"],
+                    "models": ["gpt-4.1", "gpt-5", "gpt-3.5-turbo", "gpt-4", "gpt-4o"],
                     "api_key": ""  
                 },
                 {
