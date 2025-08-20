@@ -83,7 +83,7 @@ class SmartSubtitleTranslator:
         3. 关键人物或角色特点，以及他们的固定翻译（同时列出英文原文和译文）
         4. 特定的地点或场景，固定翻译（同时列出英文原文和译文）
         5. 未包含在以下专用词汇列表中的新的人名，地名，专有名词
-        （如果发现新的此类词语，请列出其英文原文及对应的建议译文，格式为中文 空格 英文 如：黄昏草场 Duskmeadow，中间不要加任何东西，方便复制，以便后续翻译固定）
+        （如果发现新的此类词语，请列出其英文原文及对应的建议译文，格式为中文 空格 英文 如：黄昏草场 Duskmeadow，中间不要加任何东西，方便复制，以便后续翻译固定，然后解释应该放在术语表的哪一个分类当中）
         6. 语言风格和语气特点
         7. 可能的目标受众
     
@@ -396,6 +396,7 @@ class SmartSubtitleTranslator:
                 "\n".join([sub.text for sub in g]) for g in next_groups
             ) if next_groups else ""
             group_text = "\n".join([sub.text for sub in group])
+            group_text = group_text.replace('\n', ' ').replace('\r', ' ')
             max_retries = 3
             for retry in range(max_retries):
                 try:
