@@ -553,7 +553,7 @@ class SmartSubtitleTranslator:
             
             # 如果不是最后几个字符，尝试在标点处断开
             if cut < len(text) - 1:
-                while cut < len(text) and text[cut] in "。，.！？的们么了地些”":
+                while cut < len(text) and text[cut] in "。，.！？的们么了地些；”":
                     cut += 1
         
             # 更新index和result
