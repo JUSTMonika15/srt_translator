@@ -67,21 +67,21 @@ def find_split_points(subtitles, chunk_size=400):
     return split_points
 
 def save_subtitle_chunk(subtitles, start_idx, end_idx, output_path):
-    """保存字幕片段到文件"""
+    """保存字幕片段到文件，保留原始编号"""
     with open(output_path, 'w', encoding='utf-8') as f:
-        for i, subtitle in enumerate(subtitles[start_idx:end_idx], 1):
-            f.write(f"{i}\n")
+        for subtitle in subtitles[start_idx:end_idx]:
+            f.write(f"{subtitle['id']}\n")
             f.write(f"{subtitle['time']}\n")
             f.write(f"{subtitle['text']}\n\n")
 
 def split_srt_file(input_file, chunk_size=400):
     """分割SRT文件"""
     # 获取脚本所在目录和文件信息
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    input_dir = os.path.dirname(os.path.abspath(input_file))
     base_name = os.path.splitext(os.path.basename(input_file))[0]
     
     # 创建输出目录（固定为split）
-    output_folder = os.path.join(script_dir, "split")
+    output_folder = os.path.join(input_dir, "split")
     os.makedirs(output_folder, exist_ok=True)
     
     # 解析字幕文件
@@ -115,8 +115,12 @@ def split_srt_file(input_file, chunk_size=400):
     print(f"\n分割完成！文件保存在: {output_folder}")
 
 def main():
-    # 获取脚本所在目录
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # 让用户输入目录
+    input_dir = input("请输入包含SRT文件的目录（留空则为当前脚本目录）: ").strip()
+    if not input_dir:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+    else:
+        script_dir = os.path.abspath(input_dir)
     
     # 在同文件夹搜索SRT文件
     srt_files = [f for f in os.listdir(script_dir) if f.lower().endswith('.srt')]
