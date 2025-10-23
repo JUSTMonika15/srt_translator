@@ -439,6 +439,7 @@ class SmartSubtitleTranslator:
                     if not translated_group or translated_group.strip() == '':
                         raise ValueError("翻译结果为空")
                     translated_group = translated_group.strip()
+                    translated_group = translated_group.replace('\n', ' ').replace('\r', ' ')
                     lines = [line.strip() for line in translated_group.split('\n') if line.strip()]
                     if len(lines) == len(group):
                         zh_splits = lines
@@ -553,7 +554,7 @@ class SmartSubtitleTranslator:
             
             # 如果不是最后几个字符，尝试在标点处断开
             if cut < len(text) - 1:
-                while cut < len(text) and text[cut] in "。，.！？的们么了地些；”":
+                while cut < len(text) and text[cut] in "。，.：！？的们么了地些；”":
                     cut += 1
         
             # 更新index和result
