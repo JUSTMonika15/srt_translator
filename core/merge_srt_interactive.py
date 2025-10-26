@@ -46,9 +46,13 @@ def main():
     blocks1 = parse_srt_blocks(file1)
     blocks2 = parse_srt_blocks(file2)
     merged = merge_srt_blocks(blocks1, blocks2)
-    out_dir = input("请输入输出目录（留空则为当前目录）：").strip('"')
+    
+    # 默认输出到脚本所在目录
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir = input(f"请输入输出目录（留空则为脚本所在目录 {script_dir}）：").strip('"')
     if not out_dir:
-        out_dir = folder
+        out_dir = script_dir
+    
     out_name = f"【合并】{files[idx1]}"
     out_path = os.path.join(out_dir, out_name)
     with open(out_path, 'w', encoding='utf-8') as f:
