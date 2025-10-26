@@ -31,7 +31,17 @@ def merge_srt_blocks(blocks1, blocks2):
     return merged
 
 def main():
-    folder = input("请输入要合并字幕的文件夹路径：").strip('"')
+    # 默认输入路径为脚本所在目录下的 split 文件夹
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_input = os.path.join(script_dir, "split")
+    
+    folder_input = input(f"请输入要合并字幕的文件夹路径（留空则为 {default_input}）：").strip('"')
+    folder = folder_input if folder_input else default_input
+    
+    if not os.path.exists(folder):
+        print(f"文件夹不存在：{folder}")
+        return
+    
     files = list_srt_files(folder)
     if len(files) < 2:
         print("该文件夹下没有足够的SRT文件。")
@@ -48,7 +58,6 @@ def main():
     merged = merge_srt_blocks(blocks1, blocks2)
     
     # 默认输出到脚本所在目录
-    script_dir = os.path.dirname(os.path.abspath(__file__))
     out_dir = input(f"请输入输出目录（留空则为脚本所在目录 {script_dir}）：").strip('"')
     if not out_dir:
         out_dir = script_dir
