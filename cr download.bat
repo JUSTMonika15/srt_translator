@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM 获取脚本所在文件夹
+set "SCRIPT_DIR=%~dp0"
+
 set "FFMPEG=C:\Users\10279\OneDrive - UW-Madison\Computer Backup-Videos\critical role\download video\ffmpeg-7.1-full_build\bin"
 
 cd /d "C:\Users\10279\OneDrive - UW-Madison\Computer Backup-Videos\critical role"
@@ -24,9 +27,11 @@ for /f "delims=&" %%a in ("%link%") do set "cleanlink=%%a"
 REM 显示可用格式
 yt-dlp -F "%cleanlink%"
 echo.
-set /p userformat=Download format (default: best 1080p video+audio): 
+set /p userformat=Download format (default: 137+140, or type 'best' for best 1080p): 
 
 if "%userformat%"=="" (
+    set "format=137+140"
+) else if /i "%userformat%"=="best" (
     set "format=bestvideo[height>=1080]+bestaudio/best[height>=1080]"
 ) else (
     set "format=%userformat%"
@@ -34,7 +39,7 @@ if "%userformat%"=="" (
 
 set "output_template=%%(title)s.%%(ext)s"
 
-yt-dlp --ffmpeg-location "%FFMPEG%" -f "%format%" --merge-output-format mp4 -o "%output_template%" "%cleanlink%"
+yt-dlp --ffmpeg-location "%FFMPEG%" --cookies "C:\Users\10279\OneDrive - UW-Madison\Computer Backup-Videos\critical role\download video\www.youtube.com_cookies.txt" --force-ipv4 -f "%format%" --merge-output-format mp4 -o "%output_template%" "%cleanlink%"
 
 REM 自动转换为PR兼容的mp4（H.264）
 for %%f in (*.webm *.mkv) do (
