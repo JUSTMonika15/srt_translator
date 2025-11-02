@@ -21,8 +21,16 @@ set /p link=Paste the YouTube link:
 REM 去掉&t=xxx参数
 for /f "delims=&" %%a in ("%link%") do set "cleanlink=%%a"
 
-REM 只下载最好的1080p（137+140），不可用则报错不降级
-set "format=137+140"
+REM 显示可用格式
+yt-dlp -F "%cleanlink%"
+echo.
+set /p userformat=请输入要下载的format编号（留空则默认137+140）: 
+
+if "%userformat%"=="" (
+    set "format=137+140"
+) else (
+    set "format=%userformat%"
+)
 
 set "output_template=%%(title)s.%%(ext)s"
 
