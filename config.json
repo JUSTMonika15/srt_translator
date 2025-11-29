@@ -11,7 +11,7 @@
                 "gpt-4",
                 "gpt-4o"
             ],
-            "api_key": 
+            "api_key": ""
         },
         {
             "name": "Azure OpenAI",
@@ -20,6 +20,16 @@
             "models": [
                 "gpt-3.5-turbo",
                 "gpt-4"
+            ],
+            "api_key": ""
+        },
+        {
+            "name": "DeepSeek",
+            "base_url": "https://api.deepseek.com",
+            "api_type": "deepseek",
+            "models": [
+                "deepseek-chat",
+                "deepseek-reasoner"
             ],
             "api_key": ""
         }
