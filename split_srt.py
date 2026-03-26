@@ -81,6 +81,16 @@ def split_srt_file(input_file, chunk_size=400):
     base_name = os.path.splitext(os.path.basename(input_file))[0]
     
     # 创建输出目录（固定为split）
+    if (os.path.exists(os.path.join(input_dir, "split"))):
+        print("输出目录 'split' 已存在，是否删除旧文件？(y/n): ", end="")
+        choice = input().strip().lower()
+        if choice == 'y':
+            for file in os.listdir(os.path.join(input_dir, "split")):
+                file_path = os.path.join(input_dir, "split", file)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+        else:
+            print("将使用现有的文件夹，新的文件可能会覆盖旧文件。")
     output_folder = os.path.join(input_dir, "split")
     os.makedirs(output_folder, exist_ok=True)
     

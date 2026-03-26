@@ -406,12 +406,19 @@ class TranslatorPage(ctk.CTkFrame):
                     # 更新文件级进度
                     self.update_file_progress(index, total_files, file_path)
                     
-                    # 处理字幕
-                    output_path, analysis_path = subtitle_translator.process_subtitle_file_grouped(
-                        file_path,
-                        self.target_lang.get()
-                    )
-                    
+                    # 处理字幕 - 根据翻译模式选择方法
+                    translate_mode = self.translate_mode.get()
+                    if translate_mode == "按说话人分组":
+                        output_path, analysis_path = subtitle_translator.process_subtitle_file_grouped(
+                            file_path,
+                            self.target_lang.get()
+                        )
+                    else:  # "逐条上下文翻译"
+                        output_path, analysis_path = subtitle_translator.process_subtitle_file(
+                            file_path,
+                            self.target_lang.get()
+                        )
+                        
                     # 收集分析报告
                     with open(analysis_path, 'r', encoding='utf-8') as f:
                         analysis_reports.append({
