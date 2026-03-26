@@ -175,8 +175,8 @@ if not exist "%THUMB_CONVERTER%" (
     goto END
 )
 
-REM 调用 Python 转换器
-python "%THUMB_CONVERTER%" "!thumb_file!"
+REM 调用 Python 转换器（让 Python 自己找最新的 jpg）
+python "%THUMB_CONVERTER%"
 
 if errorlevel 1 (
     echo.
