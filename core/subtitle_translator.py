@@ -276,16 +276,43 @@ class SmartSubtitleTranslator:
                 ) for subtitle in subtitles
             ]
             
-            # 收集翻译结果
+            # 🔥 添加：初始化进度
+            self._update_progress(
+                "translation_start",
+                0,
+                len(subtitles),
+                f"开始翻译，共{len(subtitles)}条字幕"
+            )
+            
+            # 收集翻译结果 - 🔥 添加进度更新
+            completed_count = 0
             for future in concurrent.futures.as_completed(translation_futures):
                 try:
                     index = translation_futures.index(future)
                     translated_text = future.result()
                     translated_texts[index] = translated_text
+            
+                    # 🔥 添加：更新进度
+                    completed_count += 1
+                    self._update_progress(
+                        "translating", 
+                        completed_count, 
+                        len(subtitles), 
+                        f"已完成 {completed_count}/{len(subtitles)} 条字幕"
+                    )
+                    
                 except Exception as e:
                     print(f"处理字幕翻译任务时发生异常: {e}")
-                    # 如果任务本身抛出异常，返回原文
                     translated_texts[index] = "[处理失败]"
+                    
+                    # 🔥 添加：失败也要更新进度
+                    completed_count += 1
+                    self._update_progress(
+                        "failed",
+                        completed_count,
+                        len(subtitles),
+                        f"字幕 {index+1} 翻译失败"
+                    )
             
             return translated_texts
 
