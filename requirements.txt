@@ -8,3 +8,4 @@ anthropic
 groq
 jieba
 pysrt
+faster_whisper

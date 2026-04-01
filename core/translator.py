@@ -50,11 +50,19 @@ class Translator:
         }
 
         try:    
-            response = requests.post(
-                f"{self.base_url}/chat/completions", 
-                headers=headers, 
-                json=payload
-            )
+            if self.api_type == "local_ollama":
+                # 使用 Ollama 的 API 而不是 OpenAI
+                response = requests.post(
+                    f"{self.base_url}/api/generate",  # Ollama 端点
+                    json={"model": self.model, "prompt": text}
+                )
+            elif self.api_type == "openai":
+                # 保持现有逻辑
+                response = requests.post(
+                    f"{self.base_url}/chat/completions", 
+                    headers=headers, 
+                    json=payload
+                )
             
             # 打印完整的响应内容，帮助诊断问题
             print(f"Response status: {response.status_code}")

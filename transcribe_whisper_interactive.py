@@ -51,8 +51,24 @@ def transcribe_audio(audio_file, model_size="medium", use_gpu=True, generate_sub
     # 尝试转录
     try:
         segments, info = model.transcribe(audio_file, vad_filter=True)
-        segments_list = list(segments)  # 转换为列表以便多次使用
-        text = "".join([seg.text for seg in segments_list])
+
+        print("开始转录，处理中...")
+        print("正在收集片段，请稍候...")
+        segments_list = list(segments)
+        total = len(segments_list)
+
+        if total == 0:
+            print("⚠️ 没有识别到任何片段")
+            text = ""
+        else:
+            print(f"共 {total} 个片段，开始显示进度...")
+            for i, segment in enumerate(segments_list, 1):
+                progress = (i / total) * 100
+                print(f"✓ 进度: {progress:6.2f}% ({i}/{total}) [{format_timestamp(segment.start)}]", end="\r")
+            print()  # 进度行结束后换行
+            text = "".join(seg.text for seg in segments_list)
+
+        print(f"✅ 转录完成，共 {total} 个片段")
         
         # 生成SRT字幕文件
         if generate_subtitle:
