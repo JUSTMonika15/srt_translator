@@ -3,23 +3,31 @@ setlocal enabledelayedexpansion
 
 REM 获取脚本所在文件夹
 set "SCRIPT_DIR=%~dp0"
+set "ROOT_DIR=%SCRIPT_DIR%"
+set "DOWNLOAD_DIR=%ROOT_DIR%download video"
 
-REM 使用 %USERPROFILE% 替代硬编码路径
-set "FFMPEG=%USERPROFILE%\OneDrive - UW-Madison\Computer Backup-Videos\critical role\download video\ffmpeg-7.1-full_build\bin"
-set "PHANTOMJS=%USERPROFILE%\OneDrive - UW-Madison\Computer Backup-Videos\critical role\download video\phantomjs-2.1.1-windows\bin\phantomjs.exe"
-set "YTDLP=%USERPROFILE%\OneDrive - UW-Madison\Computer Backup-Videos\critical role\download video\yt-dlp.exe"
-set "COOKIES=%USERPROFILE%\OneDrive - UW-Madison\Computer Backup-Videos\critical role\download video\www.youtube.com_cookies.txt"
+if not exist "%DOWNLOAD_DIR%\" (
+    echo Error: download video folder not found next to this script: %DOWNLOAD_DIR%
+    pause
+    exit /b 1
+)
+
+REM 使用脚本当前目录下的资源
+set "FFMPEG=%DOWNLOAD_DIR%\ffmpeg-7.1-full_build\bin"
+set "PHANTOMJS=%DOWNLOAD_DIR%\phantomjs-2.1.1-windows\bin\phantomjs.exe"
+set "YTDLP=%DOWNLOAD_DIR%\yt-dlp.exe"
+set "COOKIES=%DOWNLOAD_DIR%\www.youtube.com_cookies.txt"
 set "THUMB_CONVERTER=%SCRIPT_DIR%convert_thumbnail_4x3.py"
 
 REM 添加 PhantomJS 到 PATH
-set "PATH=%USERPROFILE%\OneDrive - UW-Madison\Computer Backup-Videos\critical role\download video\phantomjs-2.1.1-windows\bin;%PATH%"
+set "PATH=%DOWNLOAD_DIR%\phantomjs-2.1.1-windows\bin;%PATH%"
 
 REM 自动更新 yt-dlp
 echo Checking for yt-dlp updates...
 "%YTDLP%" -U
 echo.
 
-cd /d "%USERPROFILE%\OneDrive - UW-Madison\Computer Backup-Videos\critical role"
+cd /d "%ROOT_DIR%"
 
 set /p subfolder=Enter subfolder (leave blank for current): 
 if not "%subfolder%"=="" (
@@ -111,11 +119,15 @@ echo Listing available subtitles...
 "%YTDLP%" --cookies "%COOKIES%" --list-subs "%cleanlink%"
 echo.
 
-echo Downloading MANUAL English subtitles only [en]...
+REM 添加语言选择
+set /p sub_lang=Enter subtitle language code (default: en): 
+if "%sub_lang%"=="" set "sub_lang=en"
+
+echo Downloading subtitles [%sub_lang%]...
 "%YTDLP%" --cookies "%COOKIES%" ^
   --skip-download ^
   --write-subs ^
-  --sub-langs "en" ^
+  --sub-langs "%sub_lang%" ^
   --sub-format "vtt" ^
   --convert-subs srt ^
   -o "%%(title)s.%%(ext)s" ^
@@ -125,7 +137,7 @@ echo.
 echo Subtitle download complete. Listing new subtitle files:
 dir /b *.srt 2>nul
 if errorlevel 1 (
-    echo No SRT files found. Manual English subtitles may not be available for this video.
+    echo No SRT files found. Manual subtitles may not be available for this video.
 ) else (
     for %%f in (*.srt) do echo Output: "%cd%\%%f"
 )

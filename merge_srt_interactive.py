@@ -62,9 +62,9 @@ def main():
     merged = merge_srt_blocks(blocks1, blocks2)
     
     # 默认输出到源文件所在目录
-    out_dir = input(f"请输入输出目录（留空则为源文件所在目录 {folder}）：").strip('"')
+    out_dir = input(f"请输入输出目录（留空则为源文件所在目录 {subfolder}）：").strip('"')
     if not out_dir:
-        out_dir = folder
+        out_dir = subfolder
     
     out_name = f"【合并】{files[idx1]}"
     out_path = os.path.join(out_dir, out_name)
